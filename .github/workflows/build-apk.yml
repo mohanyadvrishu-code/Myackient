@@ -8,22 +8,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Extract ZIP
-        run: unzip -o NinjaClient.zip || true
-      - name: Set project dir
         run: |
-          if [ -d "NinjaClient" ]; then
-            echo "PROJECT_DIR=NinjaClient" >> $GITHUB_ENV
-          else
-            echo "PROJECT_DIR=." >> $GITHUB_ENV
-          fi
+          for z in *.zip; do
+            echo "Extracting $z..."
+            unzip -o "$z" || true
+          done
+          echo "=== Files after extract ==="
+          find . -name "gradlew" 2>/dev/null || echo "gradlew not found"
+
+      - name: Find gradlew
+        run: |
+          GW=$(find . -name "gradlew" -not -path "*/.git/*" | head -1)
+          echo "gradlew found at: $GW"
+          echo "PROJECT_DIR=$(dirname $GW)" >> $GITHUB_ENV
+
       - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+
       - uses: android-actions/setup-android@v3
-      - run: chmod +x ${{ env.PROJECT_DIR }}/gradlew
-      - run: cd ${{ env.PROJECT_DIR }} && ./gradlew assembleDebug
+
+      - name: Build APK
+        run: |
+          cd "${{ env.PROJECT_DIR }}"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
       - uses: actions/upload-artifact@v4
         with:
           name: NinjaClient-APK
