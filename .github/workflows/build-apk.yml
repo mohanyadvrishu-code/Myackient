@@ -20,7 +20,6 @@ jobs:
           mkdir -p app/src/main/java/com/retrivedmods/wclient/game/module/combat
           cat > app/src/main/java/com/retrivedmods/wclient/game/module/combat/AntiBotModule.kt << 'EOF'
           package com.retrivedmods.wclient.game.module.combat
-
           import android.os.Handler
           import android.os.Looper
           import com.retrivedmods.wclient.game.GameSession
@@ -29,9 +28,7 @@ jobs:
           import com.retrivedmods.wclient.game.ModuleCategory
           import com.retrivedmods.wclient.game.entity.LocalPlayer
           import com.retrivedmods.wclient.game.entity.Player
-
           class AntiBotModule : Module("antibot", ModuleCategory.Combat, defaultEnabled = true) {
-
               companion object {
                   fun isBot(player: Player, session: GameSession): Boolean {
                       if (player is LocalPlayer) return false
@@ -43,19 +40,11 @@ jobs:
                       return false
                   }
               }
-
               private val mainHandler = Handler(Looper.getMainLooper())
-
-              override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-              }
-
+              override fun beforePacketBound(interceptablePacket: InterceptablePacket) {}
               override fun onDisabled() {
                   super.onDisabled()
-                  mainHandler.post {
-                      if (!isEnabled) {
-                          isEnabled = true
-                      }
-                  }
+                  mainHandler.post { if (!isEnabled) { isEnabled = true } }
               }
           }
           EOF
@@ -65,47 +54,27 @@ jobs:
           mkdir -p app/src/main/java/com/retrivedmods/wclient/game/module/misc
           cat > app/src/main/java/com/retrivedmods/wclient/game/module/misc/AntiKickModule.kt << 'EOF'
           package com.retrivedmods.wclient.game.module.misc
-
           import com.retrivedmods.wclient.game.InterceptablePacket
           import com.retrivedmods.wclient.game.Module
           import com.retrivedmods.wclient.game.ModuleCategory
           import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
           import org.cloudburstmc.protocol.bedrock.packet.AnimatePacket
           import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
-
           class AntiKickModule : Module("AntiKick", ModuleCategory.Misc) {
-
               enum class ActionMode { Swing, Sneak, Both }
-
               private val interval by intValue("Interval (sec)", 55, 5..240)
               private val actionMode by enumValue("Action", ActionMode.Swing, ActionMode::class.java)
-
               private var lastActionTime = 0L
               private var sneakToggle = false
-
-              override fun onEnabled() {
-                  super.onEnabled()
-                  lastActionTime = System.currentTimeMillis()
-                  sneakToggle = false
-              }
-
-              override fun onDisabled() {
-                  super.onDisabled()
-                  lastActionTime = 0L
-                  sneakToggle = false
-              }
-
+              override fun onEnabled() { super.onEnabled(); lastActionTime = System.currentTimeMillis(); sneakToggle = false }
+              override fun onDisabled() { super.onDisabled(); lastActionTime = 0L; sneakToggle = false }
               override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
                   if (!isEnabled) return
                   val packet = interceptablePacket.packet as? PlayerAuthInputPacket ?: return
                   val hasRealInput = packet.inputData.any { it in REAL_INPUT_DATA }
-                  if (hasRealInput) {
-                      lastActionTime = System.currentTimeMillis()
-                      return
-                  }
+                  if (hasRealInput) { lastActionTime = System.currentTimeMillis(); return }
                   val now = System.currentTimeMillis()
-                  val intervalMs = interval * 1000L
-                  if (now - lastActionTime < intervalMs) return
+                  if (now - lastActionTime < interval * 1000L) return
                   lastActionTime = now
                   when (actionMode) {
                       ActionMode.Swing -> sendSwing()
@@ -113,30 +82,17 @@ jobs:
                       ActionMode.Both -> { sendSwing(); sendSneak(packet) }
                   }
               }
-
               private fun sendSwing() {
-                  val animPacket = AnimatePacket().apply {
-                      action = AnimatePacket.Action.SWING_ARM
-                      runtimeEntityId = session.localPlayer.runtimeEntityId
-                  }
-                  session.serverBound(animPacket)
+                  session.serverBound(AnimatePacket().apply { action = AnimatePacket.Action.SWING_ARM; runtimeEntityId = session.localPlayer.runtimeEntityId })
               }
-
               private fun sendSneak(packet: PlayerAuthInputPacket) {
                   sneakToggle = !sneakToggle
-                  if (sneakToggle) {
-                      packet.inputData.add(PlayerAuthInputData.START_SNEAKING)
-                  } else {
-                      packet.inputData.add(PlayerAuthInputData.STOP_SNEAKING)
-                  }
+                  packet.inputData.add(if (sneakToggle) PlayerAuthInputData.START_SNEAKING else PlayerAuthInputData.STOP_SNEAKING)
               }
-
               companion object {
                   private val REAL_INPUT_DATA = setOf(
-                      PlayerAuthInputData.UP_LEFT, PlayerAuthInputData.UP_RIGHT,
-                      PlayerAuthInputData.UP, PlayerAuthInputData.DOWN,
-                      PlayerAuthInputData.LEFT, PlayerAuthInputData.RIGHT,
-                      PlayerAuthInputData.JUMPING, PlayerAuthInputData.SPRINTING,
+                      PlayerAuthInputData.UP_LEFT, PlayerAuthInputData.UP_RIGHT, PlayerAuthInputData.UP, PlayerAuthInputData.DOWN,
+                      PlayerAuthInputData.LEFT, PlayerAuthInputData.RIGHT, PlayerAuthInputData.JUMPING, PlayerAuthInputData.SPRINTING,
                       PlayerAuthInputData.MISSED_SWING, PlayerAuthInputData.PERFORM_ITEM_INTERACTION,
                       PlayerAuthInputData.START_SPRINTING, PlayerAuthInputData.STOP_SPRINTING,
                       PlayerAuthInputData.START_SNEAKING, PlayerAuthInputData.STOP_SNEAKING,
@@ -155,7 +111,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Make gradlew executable
-        run: chmod +x gradlew
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version=8.10.2
+          fi
+          chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew :app:assembleRelease --no-daemon --warning-mode none
