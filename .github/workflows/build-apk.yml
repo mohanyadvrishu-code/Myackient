@@ -20,13 +20,8 @@ jobs:
           TARBALL=$(find . -maxdepth 2 -name "*.tar.gz" | head -1)
           if [ -n "$TARBALL" ]; then
             echo "Found tarball: $TARBALL"
-            tar -xzf "$TARBALL"
-            EXTRACTED=$(tar -tzf "$TARBALL" | head -1 | cut -f1 -d"/")
-            echo "Extracted to: $EXTRACTED"
-            if [ -d "$EXTRACTED" ]; then
-              cp -r "$EXTRACTED/." .
-              rm -rf "$EXTRACTED"
-            fi
+            tar -xzf "$TARBALL" --strip-components=1
+            echo "Extraction done"
           else
             echo "No tar.gz found, using repo source directly"
           fi
