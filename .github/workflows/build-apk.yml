@@ -30,7 +30,6 @@ jobs:
           else
             echo "No tar.gz found, using repo source directly"
           fi
-          echo "--- Files in root ---"
           ls -la
 
       - name: Set up Java 17
@@ -38,18 +37,9 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
       - name: Grant execute permission for gradlew
-        run: |
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-            echo "gradlew found and made executable"
-          else
-            echo "ERROR: gradlew not found!"
-            ls -la
-            exit 1
-          fi
+        run: chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
