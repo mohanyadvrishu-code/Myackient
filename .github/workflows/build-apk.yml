@@ -15,14 +15,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Find and extract tar.gz
+      - name: Extract source tar.gz
         run: |
-          TAR_FILE=$(find . -name "*.tar.gz" -o -name "*.tar" | grep -v ".git" | head -1)
-          echo "Found: $TAR_FILE"
-          tar -xf "$TAR_FILE"
-          EXTRACTED=$(find . -maxdepth 1 -mindepth 1 -type d | grep -v ".git" | head -1)
-          echo "Extracted to: $EXTRACTED"
-          echo "PROJ_DIR=$EXTRACTED" >> $GITHUB_ENV
+          TARBALL=$(find . -maxdepth 2 -name "*.tar.gz" | head -1)
+          if [ -n "$TARBALL" ]; then
+            echo "Found tarball: $TARBALL"
+            tar -xzf "$TARBALL"
+            EXTRACTED=$(tar -tzf "$TARBALL" | head -1 | cut -f1 -d"/")
+            echo "Extracted to: $EXTRACTED"
+            if [ -d "$EXTRACTED" ]; then
+              cp -r "$EXTRACTED/." .
+              rm -rf "$EXTRACTED"
+            fi
+          else
+            echo "No tar.gz found, using repo source directly"
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -33,15 +40,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: Build Release APK
-        working-directory: ${{ env.PROJ_DIR }}
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: WClient-Release-APK
-          path: ${{ env.PROJ_DIR }}/app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
