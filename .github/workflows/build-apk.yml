@@ -15,17 +15,135 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract source tar.gz
+      - name: Fix AntiBotModule.kt
         run: |
-          ARCHIVE=$(find . -maxdepth 3 \( -name "*.tar.gz" -o -name "*.tar" \) | head -1)
-          if [ -n "$ARCHIVE" ]; then
-            tar -xf "$ARCHIVE"
-            EXTRACTED=$(tar -tf "$ARCHIVE" | head -1 | cut -f1 -d"/")
-            if [ -d "$EXTRACTED" ]; then
-              cp -rf "$EXTRACTED/." .
-              rm -rf "$EXTRACTED"
-            fi
-          fi
+          mkdir -p app/src/main/java/com/retrivedmods/wclient/game/module/combat
+          cat > app/src/main/java/com/retrivedmods/wclient/game/module/combat/AntiBotModule.kt << 'EOF'
+          package com.retrivedmods.wclient.game.module.combat
+
+          import android.os.Handler
+          import android.os.Looper
+          import com.retrivedmods.wclient.game.GameSession
+          import com.retrivedmods.wclient.game.InterceptablePacket
+          import com.retrivedmods.wclient.game.Module
+          import com.retrivedmods.wclient.game.ModuleCategory
+          import com.retrivedmods.wclient.game.entity.LocalPlayer
+          import com.retrivedmods.wclient.game.entity.Player
+
+          class AntiBotModule : Module("antibot", ModuleCategory.Combat, defaultEnabled = true) {
+
+              companion object {
+                  fun isBot(player: Player, session: GameSession): Boolean {
+                      if (player is LocalPlayer) return false
+                      val entry = session.level.playerMap[player.uuid] ?: return true
+                      val name = entry.name?.toString() ?: ""
+                      if (name.isBlank()) return true
+                      val xuid = entry.xuid ?: ""
+                      if (xuid.isEmpty() || xuid == "0") return true
+                      return false
+                  }
+              }
+
+              private val mainHandler = Handler(Looper.getMainLooper())
+
+              override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
+              }
+
+              override fun onDisabled() {
+                  super.onDisabled()
+                  mainHandler.post {
+                      if (!isEnabled) {
+                          isEnabled = true
+                      }
+                  }
+              }
+          }
+          EOF
+
+      - name: Fix AntiKickModule.kt
+        run: |
+          mkdir -p app/src/main/java/com/retrivedmods/wclient/game/module/misc
+          cat > app/src/main/java/com/retrivedmods/wclient/game/module/misc/AntiKickModule.kt << 'EOF'
+          package com.retrivedmods.wclient.game.module.misc
+
+          import com.retrivedmods.wclient.game.InterceptablePacket
+          import com.retrivedmods.wclient.game.Module
+          import com.retrivedmods.wclient.game.ModuleCategory
+          import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
+          import org.cloudburstmc.protocol.bedrock.packet.AnimatePacket
+          import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+
+          class AntiKickModule : Module("AntiKick", ModuleCategory.Misc) {
+
+              enum class ActionMode { Swing, Sneak, Both }
+
+              private val interval by intValue("Interval (sec)", 55, 5..240)
+              private val actionMode by enumValue("Action", ActionMode.Swing, ActionMode::class.java)
+
+              private var lastActionTime = 0L
+              private var sneakToggle = false
+
+              override fun onEnabled() {
+                  super.onEnabled()
+                  lastActionTime = System.currentTimeMillis()
+                  sneakToggle = false
+              }
+
+              override fun onDisabled() {
+                  super.onDisabled()
+                  lastActionTime = 0L
+                  sneakToggle = false
+              }
+
+              override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
+                  if (!isEnabled) return
+                  val packet = interceptablePacket.packet as? PlayerAuthInputPacket ?: return
+                  val hasRealInput = packet.inputData.any { it in REAL_INPUT_DATA }
+                  if (hasRealInput) {
+                      lastActionTime = System.currentTimeMillis()
+                      return
+                  }
+                  val now = System.currentTimeMillis()
+                  val intervalMs = interval * 1000L
+                  if (now - lastActionTime < intervalMs) return
+                  lastActionTime = now
+                  when (actionMode) {
+                      ActionMode.Swing -> sendSwing()
+                      ActionMode.Sneak -> sendSneak(packet)
+                      ActionMode.Both -> { sendSwing(); sendSneak(packet) }
+                  }
+              }
+
+              private fun sendSwing() {
+                  val animPacket = AnimatePacket().apply {
+                      action = AnimatePacket.Action.SWING_ARM
+                      runtimeEntityId = session.localPlayer.runtimeEntityId
+                  }
+                  session.serverBound(animPacket)
+              }
+
+              private fun sendSneak(packet: PlayerAuthInputPacket) {
+                  sneakToggle = !sneakToggle
+                  if (sneakToggle) {
+                      packet.inputData.add(PlayerAuthInputData.START_SNEAKING)
+                  } else {
+                      packet.inputData.add(PlayerAuthInputData.STOP_SNEAKING)
+                  }
+              }
+
+              companion object {
+                  private val REAL_INPUT_DATA = setOf(
+                      PlayerAuthInputData.UP_LEFT, PlayerAuthInputData.UP_RIGHT,
+                      PlayerAuthInputData.UP, PlayerAuthInputData.DOWN,
+                      PlayerAuthInputData.LEFT, PlayerAuthInputData.RIGHT,
+                      PlayerAuthInputData.JUMPING, PlayerAuthInputData.SPRINTING,
+                      PlayerAuthInputData.MISSED_SWING, PlayerAuthInputData.PERFORM_ITEM_INTERACTION,
+                      PlayerAuthInputData.START_SPRINTING, PlayerAuthInputData.STOP_SPRINTING,
+                      PlayerAuthInputData.START_SNEAKING, PlayerAuthInputData.STOP_SNEAKING,
+                  )
+              }
+          }
+          EOF
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
