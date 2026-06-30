@@ -15,22 +15,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Find and prepare source
+      - name: Extract source tar.gz
         run: |
-          if [ -f "settings.gradle.kts" ] || [ -f "settings.gradle" ]; then
-            echo "Source already in root"
-            exit 0
-          fi
-          SETTINGS=$(find . -maxdepth 4 \( -name "settings.gradle.kts" -o -name "settings.gradle" \) | head -1)
-          if [ -n "$SETTINGS" ]; then
-            cp -r "$(dirname $SETTINGS)/." .
-            exit 0
-          fi
           ARCHIVE=$(find . -maxdepth 3 \( -name "*.tar.gz" -o -name "*.tar" \) | head -1)
           if [ -n "$ARCHIVE" ]; then
             tar -xf "$ARCHIVE"
             EXTRACTED=$(tar -tf "$ARCHIVE" | head -1 | cut -f1 -d"/")
-            [ -d "$EXTRACTED" ] && cp -r "$EXTRACTED/." . && rm -rf "$EXTRACTED"
+            if [ -d "$EXTRACTED" ]; then
+              cp -rf "$EXTRACTED/." .
+              rm -rf "$EXTRACTED"
+            fi
           fi
 
       - name: Set up Java 17
@@ -43,9 +37,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Make gradlew executable
-        run: |
-          [ ! -f gradlew ] && gradle wrapper --gradle-version=8.10.2
-          chmod +x gradlew
+        run: chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew :app:assembleRelease --no-daemon --warning-mode none
