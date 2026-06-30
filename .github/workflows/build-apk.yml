@@ -15,17 +15,52 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract source tar.gz
+      - name: Find and prepare source
         run: |
-          TARBALL=$(find . -maxdepth 2 -name "*.tar.gz" | head -1)
-          if [ -n "$TARBALL" ]; then
-            tar -xzf "$TARBALL"
-            EXTRACTED=$(tar -tzf "$TARBALL" | head -1 | cut -f1 -d"/")
+          echo "=== Repo contents ==="
+          ls -la
+          
+          # Agar root mein already source hai toh skip karo
+          if [ -f "settings.gradle.kts" ] || [ -f "settings.gradle" ]; then
+            echo "Source already in root, skipping extraction"
+            exit 0
+          fi
+          
+          # Subdirectory mein dhundho
+          SETTINGS=$(find . -maxdepth 4 \( -name "settings.gradle.kts" -o -name "settings.gradle" \) | head -1)
+          if [ -n "$SETTINGS" ]; then
+            SRCDIR=$(dirname "$SETTINGS")
+            echo "Found source in: $SRCDIR"
+            cp -r "$SRCDIR/." .
+            exit 0
+          fi
+          
+          # Archive file dhundho (.tar.gz ya .tar dono)
+          ARCHIVE=$(find . -maxdepth 3 \( -name "*.tar.gz" -o -name "*.tar" \) | head -1)
+          if [ -n "$ARCHIVE" ]; then
+            echo "Extracting archive: $ARCHIVE"
+            tar -xf "$ARCHIVE"
+            EXTRACTED=$(tar -tf "$ARCHIVE" | head -1 | cut -f1 -d"/")
             if [ -d "$EXTRACTED" ]; then
               cp -r "$EXTRACTED/." .
               rm -rf "$EXTRACTED"
             fi
+            exit 0
           fi
+          
+          echo "=== ERROR: No source found ==="
+          find . -type f | head -30
+          exit 1
+
+      - name: Verify source files
+        run: |
+          echo "=== Files after extraction ==="
+          ls -la
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            echo "FAIL: settings.gradle.kts not found!"
+            exit 1
+          fi
+          echo "OK: Gradle source files found"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -36,14 +71,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable (if exists)
+      - name: Make gradlew executable
         run: |
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-          else
-            gradle wrapper
-            chmod +x gradlew
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version=8.10.2
           fi
+          chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
